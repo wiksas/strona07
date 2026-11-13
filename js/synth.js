@@ -1,4 +1,11 @@
-import { midiToFreq } from './music.js';
+import { FLAT_NAMES, midiToFreq } from './music.js';
+
+const SAMPLE_SETS = {
+  trumpet: { dir: 'trumpet', lo: 53, hi: 86 },
+  bass: { dir: 'acoustic_bass', lo: 26, hi: 52 },
+  piano: { dir: 'acoustic_grand_piano', lo: 55, hi: 86 },
+};
+const SAMPLE_BASE_URL = new URL('../samples/', import.meta.url);
 
 const BRASS_HARMONICS = [0, 1, 0.85, 0.75, 0.55, 0.4, 0.28, 0.2, 0.14, 0.1, 0.07, 0.05];
 
@@ -9,18 +16,63 @@ export class Engine {
     this.volumes = { solo: 0.9, bass: 0.7, comp: 0.5, ride: 0.5 };
     this.buses = null;
     this.session = null;
+    this.samples = { trumpet: new Map(), bass: new Map(), piano: new Map() };
+    this.samplesPromise = null;
+  }
+
+  /** Fetches and decodes the instrument recordings once. Resolves true when all loaded. */
+  loadSamples() {
+    this.samplesPromise ??= (async () => {
+      const decoder = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
+      const jobs = [];
+      for (const [name, { dir, lo, hi }] of Object.entries(SAMPLE_SETS)) {
+        for (let midi = lo; midi <= hi; midi++) {
+          const file = `${FLAT_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}.mp3`;
+          jobs.push(
+            fetch(new URL(`${dir}/${file}`, SAMPLE_BASE_URL))
+              .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(file))))
+              .then((bytes) => decoder.decodeAudioData(bytes))
+              .then((buffer) => this.samples[name].set(midi, buffer)),
+          );
+        }
+      }
+      const results = await Promise.allSettled(jobs);
+      return results.every((r) => r.status === 'fulfilled');
+    })();
+    return this.samplesPromise;
+  }
+
+  /** Nearest recorded note and the playback rate that brings it to the target pitch. */
+  sample(name, midi) {
+    const map = this.samples[name];
+    const { lo, hi } = SAMPLE_SETS[name];
+    const root = Math.max(lo, Math.min(hi, Math.round(midi)));
+    const buffer = map.get(root);
+    if (!buffer) return null;
+    return { buffer, rate: (2 ** ((midi - root) / 12)) * (this.a4 / 440) };
   }
 
   ensure() {
     if (!this.ctx) {
       const Ctor = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new Ctor({ latencyHint: 'interactive' });
+      this.ctx = new Ctor({ latencyHint: 'interactive', sampleRate: 48000 });
       this.master = this.ctx.createGain();
       this.master.gain.value = 0.85;
       const compressor = this.ctx.createDynamicsCompressor();
       compressor.threshold.value = -16;
       compressor.ratio.value = 4;
       this.master.connect(compressor).connect(this.ctx.destination);
+      this.reverb = this.ctx.createConvolver();
+      const irLength = Math.floor(this.ctx.sampleRate * 1.3);
+      const ir = this.ctx.createBuffer(2, irLength, this.ctx.sampleRate);
+      for (let c = 0; c < 2; c++) {
+        const d = ir.getChannelData(c);
+        for (let i = 0; i < irLength; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / irLength) ** 3.5;
+      }
+      this.reverb.buffer = ir;
+      const wet = this.ctx.createGain();
+      wet.gain.value = 0.22;
+      this.reverb.connect(wet).connect(compressor);
       const real = new Float32Array(BRASS_HARMONICS.length);
       this.brassWave = this.ctx.createPeriodicWave(real, Float32Array.from(BRASS_HARMONICS));
       const length = this.ctx.sampleRate * 2;
@@ -44,6 +96,8 @@ export class Engine {
       buses[name].gain.value = this.volumes[name];
       buses[name].connect(out);
     }
+    this.sendBus = ctx.createGain();
+    this.sendBus.connect(this.reverb);
     this.session = out;
     this.buses = buses;
   }
@@ -55,7 +109,13 @@ export class Engine {
     out.gain.cancelScheduledValues(now);
     out.gain.setValueAtTime(out.gain.value, now);
     out.gain.linearRampToValueAtTime(0, now + 0.04);
-    setTimeout(() => out.disconnect(), 120);
+    const send = this.sendBus;
+    send.gain.setValueAtTime(send.gain.value, now);
+    send.gain.linearRampToValueAtTime(0, now + 0.04);
+    setTimeout(() => {
+      out.disconnect();
+      send.disconnect();
+    }, 120);
     this.session = null;
     this.buses = null;
   }
@@ -72,7 +132,52 @@ export class Engine {
     return src;
   }
 
+  /** Plays a recorded note with a release at `when + dur`, dry plus a reverb send. */
+  playSample(name, bus, midi, when, dur, { gain = 1, attack = 0.012, release = 0.06, send = 0.5 } = {}) {
+    const found = this.sample(name, midi);
+    if (!found) return false;
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = found.buffer;
+    src.playbackRate.value = found.rate;
+    const amp = ctx.createGain();
+    const end = when + dur;
+    amp.gain.setValueAtTime(0.0001, when);
+    amp.gain.linearRampToValueAtTime(gain, when + attack);
+    amp.gain.setValueAtTime(gain, Math.max(when + attack, end - release));
+    amp.gain.exponentialRampToValueAtTime(0.0001, end + release);
+    src.connect(amp);
+    amp.connect(bus);
+    const sendGain = ctx.createGain();
+    sendGain.gain.value = send;
+    amp.connect(sendGain).connect(this.sendBus);
+    src.start(when);
+    src.stop(end + release + 0.05);
+    return true;
+  }
+
   trumpet(midi, when, dur, level = 1) {
+    const len = Math.max(dur, 0.09);
+    if (this.playSample('trumpet', this.buses.solo, midi, when, len, { gain: 1.1 * level, attack: len < 0.2 ? 0.006 : 0.02, release: 0.05, send: 0.45 })) return;
+    this.trumpetSynth(midi, when, dur, level);
+  }
+
+  bassNote(midi, when, dur) {
+    if (this.playSample('bass', this.buses.bass, midi, when, Math.max(dur, 0.2), { gain: 1.3, attack: 0.004, release: 0.09, send: 0.15 })) return;
+    this.bassSynth(midi, when, dur);
+  }
+
+  compChord(midis, when, dur) {
+    const len = Math.min(Math.max(dur, 0.4), 1.6);
+    const gain = 0.55 / Math.sqrt(midis.length);
+    let all = true;
+    midis.forEach((m, i) => {
+      all = this.playSample('piano', this.buses.comp, m, when + i * 0.008, len, { gain, attack: 0.003, release: 0.25, send: 0.35 }) && all;
+    });
+    if (!all) this.compSynth(midis, when, dur);
+  }
+
+  trumpetSynth(midi, when, dur, level = 1) {
     const ctx = this.ctx;
     const freq = midiToFreq(midi, this.a4);
     const length = Math.max(dur, 0.07);
@@ -134,7 +239,7 @@ export class Engine {
     chiff.stop(when + 0.06);
   }
 
-  bassNote(midi, when, dur) {
+  bassSynth(midi, when, dur) {
     const ctx = this.ctx;
     const freq = midiToFreq(midi, this.a4);
     const end = when + dur;
@@ -159,7 +264,7 @@ export class Engine {
     lowpass.connect(amp).connect(this.buses.bass);
   }
 
-  compChord(midis, when, dur) {
+  compSynth(midis, when, dur) {
     const ctx = this.ctx;
     const lowpass = ctx.createBiquadFilter();
     lowpass.type = 'lowpass';

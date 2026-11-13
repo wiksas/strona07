@@ -551,6 +551,7 @@ $('ref-tone').addEventListener('click', () => engine.referenceTone(a4(), 2));
 /* Playback */
 
 let rafId = 0;
+let samplesReady = false;
 
 function setPlayingUi(playing) {
   $('play').setAttribute('aria-pressed', String(playing));
@@ -566,7 +567,7 @@ function clearHighlights() {
   state.activeBar = -1;
 }
 
-function startPlayback() {
+async function startPlayback() {
   const parsed = parseBars();
   if (!parsed || !state.solo) {
     showError('Popraw zaznaczone akordy w tabeli, zanim zagram solo.');
@@ -575,6 +576,11 @@ function startPlayback() {
   clearError();
   ytPlayer?.pause();
   engine.ensure();
+  if (!samplesReady) {
+    $('now-name').textContent = 'Wczytuję brzmienie trąbki';
+    samplesReady = await engine.loadSamples();
+    $('now-name').textContent = 'Cisza';
+  }
   applyMix();
   const bpm = state.song.bpm;
   const swingPoint = $('opt-swing').value === 'auto' ? autoSwingPoint(bpm) : 0.5;
@@ -677,3 +683,6 @@ document.addEventListener('keydown', (e) => {
 
 renderSaved();
 setBusy(false);
+engine.loadSamples().then((ok) => {
+  samplesReady = ok;
+});

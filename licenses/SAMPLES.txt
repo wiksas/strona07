@@ -1,0 +1,5 @@
+Instrument samples in samples/ (trumpet, acoustic bass, acoustic grand piano) come from
+FluidR3_GM, rendered to MP3 by the midi-js-soundfonts project
+(https://github.com/gleitz/midi-js-soundfonts), released under the
+Creative Commons Attribution 3.0 license: https://creativecommons.org/licenses/by/3.0/
+Only the note ranges used by the app are included.
