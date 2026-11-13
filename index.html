@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trąbka Jam: improwizacje na trąbkę do utworów z YouTube</title>
+  <meta name="description" content="Wklej utwór z YouTube. Aplikacja wysłucha tempa i akordów, zagra do nich improwizację na trąbkę i pokaże ją w nutach, z częstotliwością każdego dźwięku w hercach.">
+  <link rel="icon" href="data:,">
+  <link rel="preload" href="fonts/barlow-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Przejdź do treści</a>
+
+  <header class="masthead">
+    <div class="masthead-inner">
+      <p class="wordmark">Trąbka Jam</p>
+      <h1>Wklej utwór. Dostaniesz solo na trąbkę do jego akordów.</h1>
+      <p class="lede">Aplikacja słucha tempa, tonacji i akordów utworu z YouTube, gra do nich improwizację i pokazuje ją w nutach. Przy każdym dźwięku widzisz jego częstotliwość w hercach.</p>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="step step-source" id="utwor" aria-labelledby="h-utwor">
+      <header class="step-head">
+        <p class="step-no" aria-hidden="true">1</p>
+        <div>
+          <h2 id="h-utwor">Utwór</h2>
+          <div class="staff-rule" aria-hidden="true"></div>
+        </div>
+      </header>
+
+      <div class="source-grid">
+        <div class="source-controls">
+          <div class="tabs" role="tablist" aria-label="Źródło utworu">
+            <button class="tab" role="tab" id="tab-youtube" aria-selected="true" aria-controls="panel-youtube" type="button">Link YouTube</button>
+            <button class="tab" role="tab" id="tab-file" aria-selected="false" aria-controls="panel-file" tabindex="-1" type="button">Plik audio</button>
+            <button class="tab" role="tab" id="tab-chords" aria-selected="false" aria-controls="panel-chords" tabindex="-1" type="button">Własne akordy</button>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-youtube" aria-labelledby="tab-youtube">
+            <form id="yt-form" class="field-row" novalidate>
+              <div class="field grow">
+                <label for="yt-url">Link do utworu na YouTube</label>
+                <input id="yt-url" name="url" type="url" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=...">
+              </div>
+              <button class="btn btn-secondary" id="yt-show" type="submit">Pokaż film</button>
+            </form>
+            <ol class="howto">
+              <li>Wklej link i kliknij „Pokaż film”.</li>
+              <li>Kliknij „Naucz się utworu”. Przeglądarka zapyta, co udostępnić: wybierz kartę „Trąbka Jam” i zaznacz „Udostępnij dźwięk karty”.</li>
+              <li>Film zagra od początku, a aplikacja słucha. Po końcu utworu (albo po kliknięciu „Zakończ słuchanie”) dostaniesz akordy, tempo i solo.</li>
+            </ol>
+            <div class="action-row">
+              <button class="btn btn-primary" id="yt-learn" type="button" disabled>Naucz się utworu</button>
+              <p class="hint" id="yt-support">Działa w Chrome i Edge na komputerze. Na telefonie użyj pliku audio albo własnych akordów.</p>
+            </div>
+            <div class="listen-box" id="listen-box" hidden>
+              <p class="listen-time"><span class="listen-label">Słucham</span> <span id="listen-time">0:00</span></p>
+              <div class="meter" aria-hidden="true"><div class="meter-fill" id="listen-meter"></div></div>
+              <button class="btn btn-secondary" id="listen-stop" type="button">Zakończ słuchanie</button>
+            </div>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-file" aria-labelledby="tab-file" hidden>
+            <div class="field">
+              <label for="file-input">Plik z nagraniem (MP3, WAV, M4A, OGG, FLAC)</label>
+              <input id="file-input" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac">
+            </div>
+            <p class="hint">Analizuję do 6 minut nagrania. Plik zostaje na Twoim urządzeniu.</p>
+            <div class="action-row">
+              <button class="btn btn-primary" id="file-learn" type="button">Naucz się z pliku</button>
+            </div>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-chords" aria-labelledby="tab-chords" hidden>
+            <div class="field">
+              <label for="chords-text">Akordy, takty rozdzielone kreską</label>
+              <textarea id="chords-text" rows="3" placeholder="Dm7 | G7 | Cmaj7 | Cmaj7"></textarea>
+              <p class="hint">W takcie możesz wpisać do czterech akordów: „Dm7 G7”. Obsługuję maj7, 7, m7, m7b5 i dim7.</p>
+            </div>
+            <div class="field narrow">
+              <label for="chords-bpm">Tempo (uderzeń na minutę)</label>
+              <input id="chords-bpm" type="number" min="40" max="300" value="120" inputmode="numeric">
+            </div>
+            <div class="action-row">
+              <button class="btn btn-primary" id="chords-use" type="button">Użyj tych akordów</button>
+              <button class="btn btn-secondary" id="chords-example" type="button">Wstaw przykład ii-V-I w C</button>
+            </div>
+          </div>
+
+          <div class="status" id="status" role="status" aria-live="polite" hidden>
+            <p class="status-text" id="status-text"></p>
+            <progress id="progress" max="1" value="0"></progress>
+          </div>
+          <p class="error-box" id="error-box" role="alert" hidden></p>
+        </div>
+
+        <aside class="video-col" aria-label="Film i zapamiętane utwory">
+          <div class="video-frame" id="video-frame">
+            <p class="empty" id="video-empty">Film pojawi się tutaj po wklejeniu linku.</p>
+          </div>
+          <div class="saved">
+            <h3>Zapamiętane utwory</h3>
+            <p class="empty" id="saved-empty">Nic jeszcze nie zapamiętano. Utwór zapisuje się w tej przeglądarce po pierwszej analizie.</p>
+            <ul class="saved-list" id="saved-list"></ul>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="step step-learned" id="nauka" aria-labelledby="h-nauka">
+      <header class="step-head">
+        <p class="step-no" aria-hidden="true">2</p>
+        <div>
+          <h2 id="h-nauka">Czego się nauczyłem</h2>
+          <div class="staff-rule" aria-hidden="true"></div>
+        </div>
+      </header>
+
+      <p class="empty" id="learned-empty">Jeszcze nie znam żadnego utworu. Wybierz źródło w kroku 1, a tutaj pojawią się tempo, tonacja i tabela akordów, którą możesz poprawić.</p>
+
+      <div class="learned" id="learned" hidden>
+        <p class="song-title" id="song-title"></p>
+        <div class="stats">
+          <div class="stat">
+            <label for="bpm-input">Tempo (BPM)</label>
+            <div class="bpm-controls">
+              <button class="btn btn-icon" id="bpm-half" type="button" aria-label="Zmniejsz tempo o połowę">÷2</button>
+              <input id="bpm-input" type="number" min="40" max="300" step="1" inputmode="numeric">
+              <button class="btn btn-icon" id="bpm-double" type="button" aria-label="Podwój tempo">×2</button>
+            </div>
+          </div>
+          <div class="stat">
+            <span class="stat-label" id="key-label">Tonacja (brzmiąca)</span>
+            <div class="key-controls" role="group" aria-labelledby="key-label">
+              <select id="key-tonic" aria-label="Dźwięk podstawowy"></select>
+              <select id="key-mode" aria-label="Rodzaj tonacji">
+                <option value="major">dur</option>
+                <option value="minor">moll</option>
+              </select>
+            </div>
+          </div>
+          <div class="stat stat-wide">
+            <span class="stat-label">Forma</span>
+            <p class="stat-value" id="form-info"></p>
+          </div>
+        </div>
+
+        <h3 class="chart-title">Tabela akordów (brzmiących)</h3>
+        <p class="hint">Rozpoznane akordy bywają niedokładne. Popraw komórkę, a solo zagra do poprawionej wersji.</p>
+        <div class="chart" id="chart"></div>
+        <p class="error-inline" id="chart-error" role="alert" hidden></p>
+        <div class="action-row">
+          <button class="btn btn-secondary" id="chart-add" type="button">Dodaj takt</button>
+          <button class="btn btn-secondary" id="chart-remove" type="button">Usuń ostatni takt</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="step step-solo" id="nuty" aria-labelledby="h-nuty">
+      <header class="step-head">
+        <p class="step-no" aria-hidden="true">3</p>
+        <div>
+          <h2 id="h-nuty">Improwizacja i nuty</h2>
+          <div class="staff-rule" aria-hidden="true"></div>
+        </div>
+      </header>
+
+      <div class="solo-layout">
+        <form class="options" id="options" aria-label="Ustawienia improwizacji" onsubmit="return false">
+          <div class="field">
+            <label for="opt-density">Gęstość nut</label>
+            <select id="opt-density">
+              <option value="auto" selected>Z nagrania (automatycznie)</option>
+              <option value="0.2">Spokojnie</option>
+              <option value="0.5">Średnio</option>
+              <option value="0.85">Żywo</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="opt-range">Rejestr</label>
+            <select id="opt-range">
+              <option value="low">Niski</option>
+              <option value="mid" selected>Średni</option>
+              <option value="high">Wysoki</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="opt-swing">Rytm ósemek</label>
+            <select id="opt-swing">
+              <option value="auto" selected>Swing</option>
+              <option value="straight">Prosto</option>
+            </select>
+          </div>
+          <div class="field narrow">
+            <label for="opt-a4">Strój A4 (Hz)</label>
+            <input id="opt-a4" type="number" min="415" max="466" step="0.5" value="440" inputmode="decimal">
+          </div>
+          <fieldset class="checks">
+            <legend>Akompaniament</legend>
+            <label class="check"><input type="checkbox" id="opt-bass" checked> Kontrabas</label>
+            <label class="check"><input type="checkbox" id="opt-comp" checked> Fortepian</label>
+            <label class="check"><input type="checkbox" id="opt-ride" checked> Perkusja</label>
+            <label class="check"><input type="checkbox" id="opt-countin" checked> Odliczanie na start</label>
+            <label class="check"><input type="checkbox" id="opt-regen"> Nowe solo w każdym obiegu</label>
+          </fieldset>
+          <div class="field">
+            <label for="vol-solo">Głośność trąbki</label>
+            <input type="range" id="vol-solo" min="0" max="1" step="0.05" value="0.9">
+          </div>
+          <div class="field">
+            <label for="vol-backing">Głośność akompaniamentu</label>
+            <input type="range" id="vol-backing" min="0" max="1" step="0.05" value="0.6">
+          </div>
+          <button class="btn btn-secondary" id="ref-tone" type="button">Zagraj wzorcowe A4</button>
+          <p class="hint formula">Wysokość dźwięku: f = A4 · 2<sup>(n − 69) / 12</sup>, gdzie n to numer nuty MIDI (A4 ma numer 69).</p>
+        </form>
+
+        <div class="notation">
+          <div class="notation-bar">
+            <div class="seg" role="radiogroup" aria-label="Sposób zapisu nut">
+              <label class="seg-item"><input type="radio" name="view" id="view-written" value="written" checked><span>Zapis dla trąbki B</span></label>
+              <label class="seg-item"><input type="radio" name="view" id="view-concert" value="concert"><span>Brzmienie</span></label>
+            </div>
+            <p class="hint" id="view-hint">Nuty i akordy o sekundę wielką wyżej niż brzmią, tak jak czyta je trębacz.</p>
+          </div>
+          <p class="empty" id="notation-empty">Nie ma jeszcze improwizacji. Wybierz utwór w kroku 1, a zagram solo i pokażę je tutaj w nutach.</p>
+          <div class="staff" id="staff" hidden></div>
+          <details class="notes-details" id="notes-details" hidden>
+            <summary>Lista nut z częstotliwościami</summary>
+            <div class="table-wrap">
+              <table class="notes-table">
+                <caption class="sr-only">Nuty improwizacji z ich wysokością w hercach</caption>
+                <thead>
+                  <tr><th scope="col">Takt</th><th scope="col">Miejsce w takcie</th><th scope="col">Brzmi</th><th scope="col">Zapis B</th><th scope="col">Hz</th></tr>
+                </thead>
+                <tbody id="notes-table"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Wszystko dzieje się w Twojej przeglądarce. Dźwięk z karty i pliki nie są nigdzie wysyłane. Film YouTube ładuje się dopiero po wklejeniu linku.</p>
+    <p>Analiza rozpoznaje tempo, tonację i akordy nagrania, a nie jego melodię. Solo jest generowane do tych akordów, więc za każdym razem brzmi inaczej.</p>
+    <p class="small">Czcionki Barlow i Bravura (znaki nutowe) na licencji SIL Open Font License 1.1, teksty licencji w katalogu <code>licenses</code>.</p>
+  </footer>
+
+  <div class="dock" role="region" aria-label="Odtwarzanie">
+    <div class="dock-inner">
+      <button class="btn btn-play" id="play" type="button" disabled aria-label="Odtwórz improwizację">
+        <svg class="icon-play" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+        <svg class="icon-stop" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
+      </button>
+      <button class="btn btn-secondary btn-dock" id="regen" type="button" disabled>Nowe solo</button>
+      <div class="now" aria-label="Aktualny dźwięk">
+        <p class="now-hz"><span id="now-hz">0,00</span> <span class="now-unit">Hz</span></p>
+        <p class="now-name"><span id="now-name">Cisza</span><span class="now-written" id="now-written"></span></p>
+      </div>
+      <p class="now-bar" id="now-bar" aria-hidden="true"></p>
+    </div>
+  </div>
+</body>
+</html>
